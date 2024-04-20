@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include <math.h>
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 450
@@ -74,17 +75,17 @@ static void InitGame(void) {
     framesCounter = 0;
 
     player.position = (Vector2){SCREEN_WIDTH - PADDLE_WIDTH * 2, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2};
-    player.speed = (Vector2){0.0f, 8.0f};
+    player.speed = (Vector2){0.0f, 400.0f};
     player.bounds = (Rectangle){player.position.x, player.position.y, PADDLE_WIDTH, PADDLE_HEIGHT};
     player.score = 0;
 
     cpu.position = (Vector2){PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2};
-    cpu.speed = (Vector2){0.0f, 8.0f};
+    cpu.speed = (Vector2){0.0f, 400.0f};
     cpu.bounds = (Rectangle){cpu.position.x, cpu.position.y, PADDLE_WIDTH, PADDLE_HEIGHT};
     cpu.score = 0;
 
     ball.position = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
-    ball.speed = (Vector2){3.0f, 3.0f};
+    ball.speed = (Vector2){200.0f, 200.0f};
     ball.bounds = (Rectangle){ball.position.x - BALL_SIZE / 2, ball.position.y - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE};
 }
 
@@ -106,6 +107,50 @@ static void UpdateGame(void) {
             }
         } break;
         case GAMEPLAY: {
+            if (IsKeyDown(KEY_UP)) {
+                player.position.y -= player.speed.y * GetFrameTime();
+            }
+            if (IsKeyDown(KEY_DOWN)) {
+                player.position.y += player.speed.y * GetFrameTime();
+            }
+                    
+            if (player.position.y <= 0) {
+                player.position.y = 0;
+            }
+            if (player.position.y + PADDLE_HEIGHT >= SCREEN_HEIGHT) {
+                player.position.y = SCREEN_HEIGHT - PADDLE_HEIGHT;
+            }
+            player.bounds.y = player.position.y;
+
+            float centerCpuPaddle = cpu.position.y + PADDLE_HEIGHT / 2;
+            float centerBall = ball.position.y + BALL_SIZE / 2;
+            float distance = centerBall - centerCpuPaddle;
+            float tolerance = 5.0f; // reduces jitter
+
+            if (fabs(distance) > tolerance) {
+                cpu.position.y += cpu.speed.y * GetFrameTime() * (distance > 0 ? 1 : -1);
+            }
+
+            if (cpu.position.y <= 0) {
+                cpu.position.y = 0;
+            }
+            if (cpu.position.y + PADDLE_HEIGHT >= SCREEN_HEIGHT) {
+                cpu.position.y = SCREEN_HEIGHT - PADDLE_HEIGHT;
+            }
+            cpu.bounds.y = cpu.position.y;
+
+            ball.position.x += ball.speed.x * GetFrameTime();
+            ball.position.y += ball.speed.y * GetFrameTime();
+
+            if (ball.position.x + BALL_SIZE >= SCREEN_WIDTH || ball.position.x - BALL_SIZE <= 0) {
+                ball.speed.x *= -1;
+            }
+            if (ball.position.y + BALL_SIZE >= SCREEN_HEIGHT || ball.position.y - BALL_SIZE <= 0) {
+                ball.speed.y *= -1;
+            }
+            ball.bounds.x = ball.position.x;
+            ball.bounds.y = ball.position.y;
+
             if (IsKeyPressed(KEY_ENTER)){
                 screen = TITLE;
             }
