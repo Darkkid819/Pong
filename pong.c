@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "raymath.h"
 #include <math.h>
 
 #define SCREEN_WIDTH 800
@@ -6,6 +7,7 @@
 #define PADDLE_HEIGHT 100
 #define PADDLE_WIDTH 20
 #define BALL_SIZE 20
+#define WIN_SCORE 10
 
 typedef enum GameScreen {
     LOGO,
@@ -24,12 +26,15 @@ typedef struct Player {
 typedef struct Ball {
     Vector2 position;
     Vector2 speed;
+    float speedCoefficient;
     Rectangle bounds;
 } Ball;
 
 static Texture2D texLogo;
 
 static Font font;
+
+static Sound fxBall;
 
 static Player player, cpu;
 static Ball ball;
@@ -47,6 +52,7 @@ int main(void)
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "PONG");
     SetTargetFPS(60);
 
+    InitAudioDevice();
     InitGame();
 
     while (!WindowShouldClose())
@@ -58,7 +64,7 @@ int main(void)
     }
 
     DeInitGame();
-
+    CloseAudioDevice();
     CloseWindow();
 
     return 0;
@@ -69,6 +75,7 @@ static void InitGame(void) {
     #define RESOURCES
         texLogo = LoadTexture("resources/raylib_logo.png");
         font = LoadFont("resources/setback.png");
+        fxBall = LoadSound("resources/ball.mp3");
     #endif
 
     screen = LOGO;
@@ -85,7 +92,8 @@ static void InitGame(void) {
     cpu.score = 0;
 
     ball.position = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
-    ball.speed = (Vector2){200.0f, 200.0f};
+    ball.speed = (Vector2){200.0f, 0.0f};
+    ball.speedCoefficient = 1.0f;
     ball.bounds = (Rectangle){ball.position.x - BALL_SIZE / 2, ball.position.y - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE};
 }
 
@@ -113,49 +121,71 @@ static void UpdateGame(void) {
             if (IsKeyDown(KEY_DOWN)) {
                 player.position.y += player.speed.y * GetFrameTime();
             }
-                    
-            if (player.position.y <= 0) {
-                player.position.y = 0;
-            }
-            if (player.position.y + PADDLE_HEIGHT >= SCREEN_HEIGHT) {
-                player.position.y = SCREEN_HEIGHT - PADDLE_HEIGHT;
-            }
+            player.position.y = Clamp(player.position.y, 0, SCREEN_HEIGHT - PADDLE_HEIGHT);
             player.bounds.y = player.position.y;
 
             float centerCpuPaddle = cpu.position.y + PADDLE_HEIGHT / 2;
             float centerBall = ball.position.y + BALL_SIZE / 2;
             float distance = centerBall - centerCpuPaddle;
-            float tolerance = 5.0f; // reduces jitter
-
-            if (fabs(distance) > tolerance) {
-                cpu.position.y += cpu.speed.y * GetFrameTime() * (distance > 0 ? 1 : -1);
-            }
-
-            if (cpu.position.y <= 0) {
-                cpu.position.y = 0;
-            }
-            if (cpu.position.y + PADDLE_HEIGHT >= SCREEN_HEIGHT) {
-                cpu.position.y = SCREEN_HEIGHT - PADDLE_HEIGHT;
-            }
+            float cpuErrorFactor = (GetFrameTime() > 0.1) ? GetRandomValue(-20, 20) : 0;
+            cpu.position.y += (cpu.speed.y * 0.5f + cpuErrorFactor) * GetFrameTime() * (distance > 0 ? 1 : -1);
+            cpu.position.y = Clamp(cpu.position.y, 0, SCREEN_HEIGHT - PADDLE_HEIGHT);
             cpu.bounds.y = cpu.position.y;
 
             ball.position.x += ball.speed.x * GetFrameTime();
             ball.position.y += ball.speed.y * GetFrameTime();
 
-            if (ball.position.x + BALL_SIZE >= SCREEN_WIDTH || ball.position.x - BALL_SIZE <= 0) {
-                ball.speed.x *= -1;
+            if (ball.position.x + BALL_SIZE/2 >= SCREEN_WIDTH) {
+                cpu.score++;  
+                ball.position = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
+                ball.speed = (Vector2){200.0f, 0.0f};
+                ball.speedCoefficient = 1.0f; 
+                player.position.y = cpu.position.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+                player.bounds.y = player.position.y;
+                cpu.bounds.y = cpu.position.y;
+            } else if (ball.position.x - BALL_SIZE/2 <= 0) {
+                player.score++;
+                ball.position = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
+                ball.speed = (Vector2){-200.0f, 0.0f};
+                ball.speedCoefficient = 1.0f;
+                player.position.y = cpu.position.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+                player.bounds.y = player.position.y;
+                cpu.bounds.y = cpu.position.y;
             }
+
             if (ball.position.y + BALL_SIZE >= SCREEN_HEIGHT || ball.position.y - BALL_SIZE <= 0) {
                 ball.speed.y *= -1;
             }
             ball.bounds.x = ball.position.x;
             ball.bounds.y = ball.position.y;
 
-            if (IsKeyPressed(KEY_ENTER)){
-                screen = TITLE;
+            if (CheckCollisionRecs(player.bounds, ball.bounds) || CheckCollisionRecs(cpu.bounds, ball.bounds)) {
+                if (ball.speedCoefficient < 1.5f) {
+                    ball.speedCoefficient += 0.1f; 
+                }
+                ball.speed.x = -ball.speed.x * ball.speedCoefficient;
+                ball.speed.x = Clamp(ball.speed.x, -400.0f, 400.0f);
+
+                float paddleY = CheckCollisionRecs(player.bounds, ball.bounds) ? player.position.y : cpu.position.y;
+                float impact = ball.position.y - (paddleY + PADDLE_HEIGHT / 2);
+                float normalizedImpact = impact / (PADDLE_HEIGHT / 2);
+                ball.speed.y = normalizedImpact * 400.0f; 
+                ball.speed.y = Clamp(ball.speed.y, -400.0f, 400.0f); 
+
+                PlaySound(fxBall);
+            }
+
+            if (player.score >= WIN_SCORE || cpu.score >= WIN_SCORE){
+                screen = ENDING;
             }
         } break;
         case ENDING: {
+            framesCounter++;
+
+            if(IsKeyPressed(KEY_ENTER)) {
+                InitGame();
+                screen = TITLE;
+            }
         } break;
         default: break;
     }
@@ -193,7 +223,21 @@ static void DrawGame(void) {
             DrawRectangle(cpu.bounds.x, cpu.bounds.y, cpu.bounds.width, cpu.bounds.height, WHITE);
             DrawRectangle(ball.bounds.x, ball.bounds.y, ball.bounds.width, ball.bounds.height, WHITE);
         } break;
-        case ENDING: break;
+        case ENDING: {
+            if (player.score >= WIN_SCORE) {
+                DrawTextEx(font, "PLAYER WIN", (Vector2){SCREEN_WIDTH / 2 - MeasureText("PLAYER WIN", 80) / 2, 100}, 80, 6, MAROON);
+            } else {
+                DrawTextEx(font, "CPU WIN", (Vector2){SCREEN_WIDTH / 2 - MeasureText("CPU WIN", 80) / 2, 100}, 80, 6, MAROON);
+            }
+                        
+            if ((framesCounter) % 2 == 0) {
+                DrawText("PRESS [ENTER] TO PLAY AGAIN", 
+                    GetScreenWidth()/2 - MeasureText("PRESS [ENTER] TO PLAY AGAIN", 20) / 2,
+                    GetScreenHeight() / 2 + 80,
+                    20,
+                    GRAY);
+            }
+        } break;
         default: break;
     }
 }
@@ -202,4 +246,6 @@ static void DeInitGame(void) {
     UnloadTexture(texLogo);
 
     UnloadFont(font);
+
+    UnloadSound(fxBall);
 }
