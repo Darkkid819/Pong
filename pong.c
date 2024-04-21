@@ -34,7 +34,9 @@ static Texture2D texLogo;
 
 static Font font;
 
-static Sound fxBall;
+static Sound fxHit;
+static Sound fxWall;
+static Sound fxScore;
 
 static Player player, cpu;
 static Ball ball;
@@ -75,7 +77,9 @@ static void InitGame(void) {
     #define RESOURCES
         texLogo = LoadTexture("resources/raylib_logo.png");
         font = LoadFont("resources/setback.png");
-        fxBall = LoadSound("resources/ball.mp3");
+        fxHit = LoadSound("resources/hit.wav");
+        fxWall = LoadSound("resources/wall.wav");
+        fxScore = LoadSound("resources/score.wav");
     #endif
 
     screen = LOGO;
@@ -143,6 +147,8 @@ static void UpdateGame(void) {
                 player.position.y = cpu.position.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
                 player.bounds.y = player.position.y;
                 cpu.bounds.y = cpu.position.y;
+                
+                PlaySound(fxScore);
             } else if (ball.position.x - BALL_SIZE/2 <= 0) {
                 player.score++;
                 ball.position = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
@@ -151,10 +157,14 @@ static void UpdateGame(void) {
                 player.position.y = cpu.position.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
                 player.bounds.y = player.position.y;
                 cpu.bounds.y = cpu.position.y;
+                
+                PlaySound(fxScore);
             }
 
             if (ball.position.y + BALL_SIZE >= SCREEN_HEIGHT || ball.position.y - BALL_SIZE <= 0) {
                 ball.speed.y *= -1;
+
+                PlaySound(fxWall);
             }
             ball.bounds.x = ball.position.x;
             ball.bounds.y = ball.position.y;
@@ -172,7 +182,7 @@ static void UpdateGame(void) {
                 ball.speed.y = normalizedImpact * 400.0f; 
                 ball.speed.y = Clamp(ball.speed.y, -400.0f, 400.0f); 
 
-                PlaySound(fxBall);
+                PlaySound(fxHit);
             }
 
             if (player.score >= WIN_SCORE || cpu.score >= WIN_SCORE){
@@ -247,5 +257,7 @@ static void DeInitGame(void) {
 
     UnloadFont(font);
 
-    UnloadSound(fxBall);
+    UnloadSound(fxHit);
+    UnloadSound(fxScore);
+    UnloadSound(fxWall);
 }
